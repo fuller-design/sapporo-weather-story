@@ -1,0 +1,489 @@
+.page {
+  display: grid;
+  grid-template-columns: minmax(320px, 46vw) minmax(320px, 460px);
+  gap: 28px;
+  min-height: 100svh;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(245, 216, 153, 0.28), transparent 28%),
+    linear-gradient(135deg, #eeece5 0%, #f8f6f0 47%, #e5eceb 100%);
+}
+
+.previewArea {
+  display: grid;
+  min-height: calc(100svh - 44px);
+  place-items: center;
+}
+
+.phoneShell {
+  width: min(100%, 420px);
+  aspect-ratio: 9 / 16;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  box-shadow: 0 20px 60px rgba(47, 45, 44, 0.18);
+  overflow: hidden;
+}
+
+.story {
+  position: relative;
+  container-type: inline-size;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-position: center;
+  background-size: cover;
+  color: #fff;
+  isolation: isolate;
+}
+
+.storyShade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(16, 35, 50, 0.08) 0%, rgba(16, 35, 50, 0.16) 46%, rgba(16, 35, 50, 0.24) 100%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.06), transparent 42%, rgba(0, 0, 0, 0.04));
+  backdrop-filter: saturate(0.9);
+}
+
+.storyContent {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.1);
+}
+
+.storyHeader {
+  position: absolute;
+  top: 9.5%;
+  left: 10%;
+  display: grid;
+  gap: clamp(7px, 2cqw, 10px);
+  font-family: "AvenirLocal", Avenir, Montserrat, system-ui, sans-serif;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.storyHeader p {
+  margin: 0;
+  font-size: clamp(12px, 3.8cqw, 18px);
+  font-weight: 200;
+  letter-spacing: 0.22em;
+}
+
+.dateLine {
+  display: flex;
+  align-items: baseline;
+  gap: clamp(9px, 2.7cqw, 14px);
+  text-transform: lowercase;
+}
+
+.dateMain {
+  font-size: clamp(21px, 6.6cqw, 32px);
+  font-weight: 200;
+  letter-spacing: 0.12em;
+}
+
+.dateWeekday {
+  font-size: clamp(10px, 3.15cqw, 15px);
+  font-weight: 200;
+  letter-spacing: 0.38em;
+}
+
+.headerRule {
+  width: clamp(82px, 22.5cqw, 114px);
+  border-top: 1px dotted rgba(255, 255, 255, 0.92);
+}
+
+.weatherBlock {
+  position: absolute;
+  top: 27.5%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  width: 78%;
+  gap: clamp(20px, 5cqw, 25px);
+  justify-items: center;
+}
+
+.weatherBlock h1 {
+  margin: 0;
+  font-size: clamp(19px, 5.7cqw, 28px);
+  font-weight: 400;
+  line-height: 1.2;
+  letter-spacing: 0.42em;
+  text-align: center;
+  text-indent: 0.42em;
+  white-space: nowrap;
+}
+
+.storyDivider {
+  width: clamp(87px, 24cqw, 116px);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.temps {
+  position: absolute;
+  top: 54%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: clamp(10px, 3.2cqw, 16px);
+  font-family: "AvenirLocal", Avenir, Montserrat, system-ui, sans-serif;
+  color: #fff;
+}
+
+.temps p {
+  margin: 0;
+  font-size: clamp(31px, 9.52cqw, 46px);
+  font-weight: 200;
+  line-height: 0.9;
+  letter-spacing: 0;
+}
+
+.temps p:first-child {
+  font-size: clamp(39px, 11.9cqw, 59px);
+}
+
+.temps span {
+  font-size: 0.62em;
+  margin-left: 0.06em;
+}
+
+.precipGrid {
+  position: absolute;
+  top: 71.8%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(18px, 5.1cqw, 29px);
+  width: 51%;
+  font-family: "AvenirLocal", Avenir, Montserrat, system-ui, sans-serif;
+}
+
+.precipCircle {
+  display: grid;
+  aspect-ratio: 1;
+  place-items: center;
+  align-content: center;
+  gap: clamp(6px, 1.6cqw, 9px);
+  border: 1.5px dotted rgba(255, 255, 255, 0.92);
+  border-radius: 50%;
+  color: #fff;
+}
+
+.precipCircle p {
+  margin: 0;
+  font-size: clamp(12px, 3.55cqw, 18px);
+  font-weight: 200;
+  letter-spacing: 0.08em;
+  opacity: 0.86;
+}
+
+.precipValue {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.precipValue svg {
+  width: clamp(18px, 5.25cqw, 26px);
+  height: clamp(18px, 5.25cqw, 26px);
+}
+
+.precipValue span {
+  font-size: clamp(21px, 6.15cqw, 31px);
+  font-weight: 100;
+  line-height: 0.9;
+  letter-spacing: 0.04em;
+}
+
+.precipValue small {
+  font-size: 0.6em;
+}
+
+.comment {
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  bottom: 7.3%;
+  margin: 0;
+  color: #fff;
+  font-size: clamp(15px, 4.61cqw, 25px);
+  font-weight: 400;
+  line-height: 1.6;
+  letter-spacing: 0.264em;
+  text-align: center;
+  overflow-wrap: anywhere;
+  text-indent: 0.264em;
+}
+
+.controls {
+  align-self: center;
+  display: grid;
+  gap: 14px;
+  max-height: calc(100svh - 44px);
+  padding: 18px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 16px 50px rgba(47, 45, 44, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.controlHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.kicker,
+.controlHeader h2 {
+  margin: 0;
+}
+
+.kicker {
+  font-family: "AvenirLocal", Avenir, Montserrat, system-ui, sans-serif;
+  color: var(--accent-strong);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.controlHeader h2 {
+  font-size: 26px;
+  font-weight: 500;
+}
+
+.iconButton,
+.actions button,
+.wideGenerate,
+.segmented button,
+.upload {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--ink);
+}
+
+.iconButton {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.segmented button {
+  min-height: 42px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.segmented .active {
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgba(47, 45, 44, 0.08);
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.field span {
+  color: rgba(47, 45, 44, 0.72);
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink);
+  font-size: 16px;
+  outline: none;
+}
+
+.field input,
+.field select {
+  height: 44px;
+  padding: 0 12px;
+}
+
+.field textarea {
+  resize: vertical;
+  padding: 12px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.upload {
+  position: relative;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  overflow: hidden;
+}
+
+.upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.actions button,
+.wideGenerate {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.actions .primary,
+.wideGenerate {
+  border-color: transparent;
+  background: var(--accent-strong);
+  color: #fff;
+}
+
+.wideGenerate {
+  background: #7e6c4d;
+}
+
+.notice {
+  margin: 0;
+  color: var(--danger);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+@media (max-width: 860px) {
+  .page {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    min-height: 100svh;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom));
+  }
+
+  .previewArea {
+    min-height: auto;
+  }
+
+  .phoneShell {
+    width: min(100%, 360px);
+  }
+
+  .controls {
+    max-height: none;
+    padding: 14px;
+  }
+
+  .storyHeader {
+    top: 9.2%;
+  }
+
+  .weatherBlock {
+    top: 28.8%;
+    gap: clamp(15px, 4.2cqw, 20px);
+  }
+
+  .weatherBlock h1 {
+    font-size: clamp(16px, 4.8cqw, 23px);
+    letter-spacing: 0.34em;
+    text-indent: 0.34em;
+  }
+
+  .storyDivider {
+    width: clamp(78px, 21cqw, 104px);
+  }
+
+  .temps {
+    top: 58%;
+    gap: clamp(9px, 2.8cqw, 14px);
+  }
+
+  .temps p {
+    font-size: clamp(28px, 8.6cqw, 41px);
+  }
+
+  .temps p:first-child {
+    font-size: clamp(35px, 10.7cqw, 53px);
+  }
+
+  .precipGrid {
+    top: 72.5%;
+    gap: clamp(17px, 4.8cqw, 26px);
+    width: 58%;
+  }
+
+  .precipCircle {
+    gap: clamp(5px, 1.45cqw, 8px);
+  }
+
+  .precipCircle p {
+    font-size: clamp(11px, 3.15cqw, 16px);
+  }
+
+  .precipValue {
+    gap: 0;
+  }
+
+  .precipValue svg {
+    width: clamp(16px, 4.5cqw, 23px);
+    height: clamp(16px, 4.5cqw, 23px);
+  }
+
+  .precipValue span {
+    font-size: clamp(19px, 5.35cqw, 27px);
+    letter-spacing: 0.02em;
+  }
+
+  .comment {
+    bottom: 5.8%;
+    font-size: clamp(13px, 4.15cqw, 22px);
+  }
+}
+
+@media (max-width: 420px) {
+  .actions,
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+
+  .phoneShell {
+    width: min(100%, calc(100svh * 0.43));
+    min-width: 280px;
+  }
+}
