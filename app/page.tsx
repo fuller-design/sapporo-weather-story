@@ -1,6 +1,15 @@
 "use client";
 
-import { type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type TouchEvent as ReactTouchEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import { Download, Droplet, ImagePlus, RefreshCw, Shuffle, Sparkles } from "lucide-react";
 import { WeatherIcon } from "@/app/components/WeatherIcon";
 import {
@@ -105,6 +114,19 @@ function getCenter(points: TouchPoint[]) {
 
 function getDistance(pointA: TouchPoint, pointB: TouchPoint) {
   return Math.hypot(pointA.x - pointB.x, pointA.y - pointB.y);
+}
+
+function getTouchPoints(touches: { length: number; item(index: number): { clientX: number; clientY: number } | null }): TouchPoint[] {
+  const points: TouchPoint[] = [];
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches.item(index);
+    if (touch) points.push({ x: touch.clientX, y: touch.clientY });
+  }
+  return points;
+}
+
+function dataUrlToBlob(dataUrl: string) {
+  return fetch(dataUrl).then((response) => response.blob());
 }
 
 export default function Home() {
@@ -235,8 +257,23 @@ export default function Home() {
         canvasHeight: 1920,
         backgroundColor: "#efeee8"
       });
+      const filename = `sapporo-weather-${weather.day}-${Date.now()}.png`;
+      const blob = await dataUrlToBlob(dataUrl);
+      const file = new File([blob], filename, { type: "image/png" });
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: "SAPPORO STORY"
+          });
+          setNotice("共有シートから画像を保存できます。");
+          return;
+        } catch (shareError) {
+          if (shareError instanceof DOMException && shareError.name === "AbortError") return;
+        }
+      }
       const link = document.createElement("a");
-      link.download = `sapporo-weather-${weather.day}-${Date.now()}.png`;
+      link.download = filename;
       link.href = dataUrl;
       link.click();
     } catch {
@@ -268,20 +305,8 @@ export default function Home() {
     };
   }, [backgroundAdjust]);
 
-  const handleBackgroundPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!currentBackground.image) return;
-    activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    event.currentTarget.setPointerCapture(event.pointerId);
-    startBackgroundGesture(Array.from(activePointersRef.current.values()));
-  };
-
-  const handleBackgroundPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!currentBackground.image || !storyRef.current || !backgroundGestureRef.current) return;
-    if (!activePointersRef.current.has(event.pointerId)) return;
-    event.preventDefault();
-    activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-
-    const points = Array.from(activePointersRef.current.values());
+  const updateBackgroundGesture = (points: TouchPoint[]) => {
+    if (!currentBackground.image || !storyRef.current || !backgroundGestureRef.current || points.length === 0) return;
     const currentCenter = getCenter(points);
     const gesture = backgroundGestureRef.current;
     const storyRect = storyRef.current.getBoundingClientRect();
@@ -301,12 +326,50 @@ export default function Home() {
     setBackgroundAdjust(clampBackgroundAdjust(nextAdjust));
   };
 
+  const handleBackgroundPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    if (!currentBackground.image) return;
+    activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    startBackgroundGesture(Array.from(activePointersRef.current.values()));
+  };
+
+  const handleBackgroundPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    if (!currentBackground.image || !storyRef.current || !backgroundGestureRef.current) return;
+    if (!activePointersRef.current.has(event.pointerId)) return;
+    event.preventDefault();
+    activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    updateBackgroundGesture(Array.from(activePointersRef.current.values()));
+  };
+
   const handleBackgroundPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
     activePointersRef.current.delete(event.pointerId);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     startBackgroundGesture(Array.from(activePointersRef.current.values()));
+  };
+
+  const handleBackgroundTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    if (!currentBackground.image) return;
+    startBackgroundGesture(getTouchPoints(event.touches));
+  };
+
+  const handleBackgroundTouchMove = (event: ReactTouchEvent<HTMLDivElement>) => {
+    if (!currentBackground.image) return;
+    event.preventDefault();
+    updateBackgroundGesture(getTouchPoints(event.touches));
+  };
+
+  const handleBackgroundTouchEnd = (event: ReactTouchEvent<HTMLDivElement>) => {
+    const points = getTouchPoints(event.touches);
+    if (points.length === 0) {
+      backgroundGestureRef.current = null;
+      return;
+    }
+    startBackgroundGesture(points);
   };
 
   return (
@@ -322,6 +385,10 @@ export default function Home() {
             onPointerUp={handleBackgroundPointerEnd}
             onPointerCancel={handleBackgroundPointerEnd}
             onPointerLeave={handleBackgroundPointerEnd}
+            onTouchStart={handleBackgroundTouchStart}
+            onTouchMove={handleBackgroundTouchMove}
+            onTouchEnd={handleBackgroundTouchEnd}
+            onTouchCancel={handleBackgroundTouchEnd}
           >
             {currentBackground.image ? (
               <img className={styles.storyBackgroundImage} src={currentBackground.image} alt="" style={backgroundImageStyle} />
