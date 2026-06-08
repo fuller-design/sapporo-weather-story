@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Droplet, ImagePlus, RefreshCw, Shuffle, Sparkles, Wand2 } from "lucide-react";
+import { type CSSProperties, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Download, Droplet, ImagePlus, RefreshCw, Shuffle, Sparkles } from "lucide-react";
 import { WeatherIcon } from "@/app/components/WeatherIcon";
 import {
   fallbackComments,
@@ -18,6 +18,23 @@ type AssetMap = {
   backgrounds: Record<WeatherKind, string[]>;
   icons: Partial<Record<WeatherKind, string | null>>;
   detailedIcons: Record<string, string>;
+};
+
+type BackgroundAdjust = {
+  zoom: number;
+  x: number;
+  y: number;
+};
+
+type TouchPoint = {
+  x: number;
+  y: number;
+};
+
+type BackgroundGesture = {
+  startAdjust: BackgroundAdjust;
+  startCenter: TouchPoint;
+  startDistance: number;
 };
 
 const initialWeather: StoryWeather = {
@@ -43,6 +60,19 @@ const fallbackBackgrounds: Record<WeatherKind, string> = {
   snow: "linear-gradient(160deg, #dce8e9 0%, #f9faf5 52%, #aabdc3 100%)"
 };
 
+const initialBackgroundAdjust: BackgroundAdjust = {
+  zoom: 1,
+  x: 0,
+  y: 0
+};
+
+const backgroundLimits = {
+  minZoom: 1,
+  maxZoom: 2.4,
+  minOffset: -35,
+  maxOffset: 35
+};
+
 function pickRandomIndex(length: number, current = -1) {
   if (length <= 1) return 0;
   let next = Math.floor(Math.random() * length);
@@ -54,8 +84,33 @@ function normalizePercent(value: number) {
   return Math.max(0, Math.min(100, Math.round(value || 0)));
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function clampBackgroundAdjust(adjust: BackgroundAdjust): BackgroundAdjust {
+  return {
+    zoom: clamp(adjust.zoom, backgroundLimits.minZoom, backgroundLimits.maxZoom),
+    x: clamp(adjust.x, backgroundLimits.minOffset, backgroundLimits.maxOffset),
+    y: clamp(adjust.y, backgroundLimits.minOffset, backgroundLimits.maxOffset)
+  };
+}
+
+function getCenter(points: TouchPoint[]) {
+  return points.reduce(
+    (center, point) => ({ x: center.x + point.x / points.length, y: center.y + point.y / points.length }),
+    { x: 0, y: 0 }
+  );
+}
+
+function getDistance(pointA: TouchPoint, pointB: TouchPoint) {
+  return Math.hypot(pointA.x - pointB.x, pointA.y - pointB.y);
+}
+
 export default function Home() {
   const storyRef = useRef<HTMLDivElement>(null);
+  const activePointersRef = useRef<Map<number, TouchPoint>>(new Map());
+  const backgroundGestureRef = useRef<BackgroundGesture | null>(null);
   const [weather, setWeather] = useState<StoryWeather>(initialWeather);
   const [assets, setAssets] = useState<AssetMap>({
     backgrounds: { sunny: [], cloudy: [], rainy: [], snow: [] },
@@ -63,6 +118,7 @@ export default function Home() {
     detailedIcons: {}
   });
   const [customBackground, setCustomBackground] = useState<string | null>(null);
+  const [backgroundAdjust, setBackgroundAdjust] = useState<BackgroundAdjust>(initialBackgroundAdjust);
   const [isFetchingWeather, setIsFetchingWeather] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -76,16 +132,27 @@ export default function Home() {
   }, []);
 
   const currentBackground = useMemo(() => {
+    const fallback = fallbackBackgrounds[weather.primary];
     if (customBackground) {
-      return { backgroundImage: `url(${customBackground})` };
+      return { image: customBackground, fallback };
     }
     const pool = assets.backgrounds[weather.primary] ?? [];
     const selected = pool[weather.backgroundIndex % Math.max(pool.length, 1)];
     if (selected) {
-      return { backgroundImage: `url(${selected})` };
+      return { image: selected, fallback };
     }
-    return { backgroundImage: fallbackBackgrounds[weather.primary] };
+    return { image: null, fallback };
   }, [assets.backgrounds, customBackground, weather.backgroundIndex, weather.primary]);
+
+  const backgroundImageStyle = useMemo(
+    () =>
+      ({
+        "--bg-zoom": backgroundAdjust.zoom,
+        "--bg-x": `${backgroundAdjust.x}%`,
+        "--bg-y": `${backgroundAdjust.y}%`
+      }) as CSSProperties,
+    [backgroundAdjust]
+  );
 
   const updateWeatherText = (weatherText: string) => {
     const option = getWeatherOption(weatherText);
@@ -99,6 +166,7 @@ export default function Home() {
       backgroundIndex: pickRandomIndex(assets.backgrounds[option.primary]?.length ?? 0)
     }));
     setCustomBackground(null);
+    setBackgroundAdjust(initialBackgroundAdjust);
   };
 
   const updateDay = (day: DayMode) => {
@@ -121,6 +189,7 @@ export default function Home() {
         backgroundIndex: pickRandomIndex(assets.backgrounds[data.primary as WeatherKind]?.length ?? 0)
       }));
       setCustomBackground(null);
+      setBackgroundAdjust(initialBackgroundAdjust);
     } catch {
       setNotice("天気情報を取得できませんでした。入力欄から手動で調整できます。");
     } finally {
@@ -130,6 +199,7 @@ export default function Home() {
 
   const shuffleBackground = () => {
     setCustomBackground(null);
+    setBackgroundAdjust(initialBackgroundAdjust);
     setWeather((current) => ({
       ...current,
       backgroundIndex: pickRandomIndex(assets.backgrounds[current.primary]?.length ?? 0, current.backgroundIndex)
@@ -178,15 +248,84 @@ export default function Home() {
 
   const handleUpload = (file?: File) => {
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setCustomBackground(url);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setCustomBackground(reader.result);
+        setBackgroundAdjust(initialBackgroundAdjust);
+      }
+    };
+    reader.onerror = () => setNotice("背景画像を読み込めませんでした。別の画像でお試しください。");
+    reader.readAsDataURL(file);
+  };
+
+  const startBackgroundGesture = useCallback((points: TouchPoint[]) => {
+    if (!storyRef.current || points.length === 0) return;
+    backgroundGestureRef.current = {
+      startAdjust: backgroundAdjust,
+      startCenter: getCenter(points),
+      startDistance: points.length >= 2 ? getDistance(points[0], points[1]) : 0
+    };
+  }, [backgroundAdjust]);
+
+  const handleBackgroundPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!currentBackground.image) return;
+    activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    startBackgroundGesture(Array.from(activePointersRef.current.values()));
+  };
+
+  const handleBackgroundPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!currentBackground.image || !storyRef.current || !backgroundGestureRef.current) return;
+    if (!activePointersRef.current.has(event.pointerId)) return;
+    event.preventDefault();
+    activePointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    const points = Array.from(activePointersRef.current.values());
+    const currentCenter = getCenter(points);
+    const gesture = backgroundGestureRef.current;
+    const storyRect = storyRef.current.getBoundingClientRect();
+    const deltaX = ((currentCenter.x - gesture.startCenter.x) / storyRect.width) * 100;
+    const deltaY = ((currentCenter.y - gesture.startCenter.y) / storyRect.height) * 100;
+    const nextAdjust: BackgroundAdjust = {
+      ...gesture.startAdjust,
+      x: gesture.startAdjust.x + deltaX,
+      y: gesture.startAdjust.y + deltaY
+    };
+
+    if (points.length >= 2 && gesture.startDistance > 0) {
+      const nextDistance = getDistance(points[0], points[1]);
+      nextAdjust.zoom = gesture.startAdjust.zoom * (nextDistance / gesture.startDistance);
+    }
+
+    setBackgroundAdjust(clampBackgroundAdjust(nextAdjust));
+  };
+
+  const handleBackgroundPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    activePointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    startBackgroundGesture(Array.from(activePointersRef.current.values()));
   };
 
   return (
     <main className={styles.page}>
       <section className={styles.previewArea} aria-label="ストーリープレビュー">
         <div className={styles.phoneShell}>
-          <div ref={storyRef} className={styles.story} style={currentBackground}>
+          <div
+            ref={storyRef}
+            className={styles.story}
+            style={{ backgroundImage: currentBackground.fallback }}
+            onPointerDown={handleBackgroundPointerDown}
+            onPointerMove={handleBackgroundPointerMove}
+            onPointerUp={handleBackgroundPointerEnd}
+            onPointerCancel={handleBackgroundPointerEnd}
+            onPointerLeave={handleBackgroundPointerEnd}
+          >
+            {currentBackground.image ? (
+              <img className={styles.storyBackgroundImage} src={currentBackground.image} alt="" style={backgroundImageStyle} />
+            ) : null}
             <div className={styles.storyShade} />
             <div className={styles.storyContent}>
               <header className={styles.storyHeader}>
@@ -315,6 +454,48 @@ export default function Home() {
           <input type="file" accept="image/*" onChange={(event) => handleUpload(event.target.files?.[0])} />
         </label>
 
+        <div className={styles.backgroundTools} aria-label="背景画像の切り取り調整">
+          <div className={styles.toolHeader}>
+            <span>背景トリミング</span>
+            <button type="button" onClick={() => setBackgroundAdjust(initialBackgroundAdjust)}>
+              リセット
+            </button>
+          </div>
+          <label className={styles.rangeField}>
+            <span>拡大</span>
+            <input
+              type="range"
+              min="1"
+              max="2.4"
+              step="0.01"
+              value={backgroundAdjust.zoom}
+              onChange={(event) => setBackgroundAdjust((current) => clampBackgroundAdjust({ ...current, zoom: Number(event.target.value) }))}
+            />
+          </label>
+          <label className={styles.rangeField}>
+            <span>左右</span>
+            <input
+              type="range"
+              min="-35"
+              max="35"
+              step="1"
+              value={backgroundAdjust.x}
+              onChange={(event) => setBackgroundAdjust((current) => clampBackgroundAdjust({ ...current, x: Number(event.target.value) }))}
+            />
+          </label>
+          <label className={styles.rangeField}>
+            <span>上下</span>
+            <input
+              type="range"
+              min="-35"
+              max="35"
+              step="1"
+              value={backgroundAdjust.y}
+              onChange={(event) => setBackgroundAdjust((current) => clampBackgroundAdjust({ ...current, y: Number(event.target.value) }))}
+            />
+          </label>
+        </div>
+
         <div className={styles.actions}>
           <button type="button" onClick={fetchWeather} disabled={isFetchingWeather}>
             <RefreshCw size={18} />
@@ -333,11 +514,6 @@ export default function Home() {
             PNG保存
           </button>
         </div>
-
-        <button type="button" className={styles.wideGenerate} onClick={savePng} disabled={isSaving}>
-          <Wand2 size={18} />
-          画像生成
-        </button>
 
         {notice ? <p className={styles.notice}>{notice}</p> : null}
       </section>

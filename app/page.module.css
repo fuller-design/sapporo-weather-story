@@ -34,6 +34,21 @@
   background-size: cover;
   color: #fff;
   isolation: isolate;
+  touch-action: none;
+  user-select: none;
+}
+
+.storyBackgroundImage {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  transform: translate(var(--bg-x, 0), var(--bg-y, 0)) scale(var(--bg-zoom, 1));
+  transform-origin: center;
+  pointer-events: none;
 }
 
 .storyShade {
@@ -263,7 +278,6 @@
 
 .iconButton,
 .actions button,
-.wideGenerate,
 .segmented button,
 .upload {
   border: 1px solid var(--line);
@@ -355,14 +369,54 @@
   opacity: 0;
 }
 
+.backgroundTools {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.toolHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(47, 45, 44, 0.72);
+  font-size: 13px;
+}
+
+.toolHeader button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+}
+
+.rangeField {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: 10px;
+  color: rgba(47, 45, 44, 0.72);
+  font-size: 13px;
+}
+
+.rangeField input {
+  width: 100%;
+  accent-color: var(--accent-strong);
+}
+
 .actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
 
-.actions button,
-.wideGenerate {
+.actions button {
   display: inline-flex;
   min-height: 46px;
   align-items: center;
@@ -371,15 +425,10 @@
   padding: 0 12px;
 }
 
-.actions .primary,
-.wideGenerate {
+.actions .primary {
   border-color: transparent;
   background: var(--accent-strong);
   color: #fff;
-}
-
-.wideGenerate {
-  background: #7e6c4d;
 }
 
 .notice {
