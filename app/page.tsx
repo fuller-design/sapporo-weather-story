@@ -129,6 +129,44 @@ function dataUrlToBlob(dataUrl: string) {
   return fetch(dataUrl).then((response) => response.blob());
 }
 
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    if (!src.startsWith("data:")) image.crossOrigin = "anonymous";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("image load failed"));
+    image.src = src;
+  });
+}
+
+async function composeStoryPng(backgroundSrc: string, overlaySrc: string, adjust: BackgroundAdjust) {
+  const width = 1080;
+  const height = 1920;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("canvas unavailable");
+
+  const background = await loadImage(backgroundSrc);
+  const coverScale = Math.max(width / background.naturalWidth, height / background.naturalHeight);
+  const drawWidth = background.naturalWidth * coverScale;
+  const drawHeight = background.naturalHeight * coverScale;
+  const drawX = (width - drawWidth) / 2;
+  const drawY = (height - drawHeight) / 2;
+
+  context.save();
+  context.translate(width / 2 + (width * adjust.x) / 100, height / 2 + (height * adjust.y) / 100);
+  context.scale(adjust.zoom, adjust.zoom);
+  context.drawImage(background, drawX - width / 2, drawY - height / 2, drawWidth, drawHeight);
+  context.restore();
+
+  const overlay = await loadImage(overlaySrc);
+  context.drawImage(overlay, 0, 0, width, height);
+
+  return canvas.toDataURL("image/png");
+}
+
 export default function Home() {
   const storyRef = useRef<HTMLDivElement>(null);
   const activePointersRef = useRef<Map<number, TouchPoint>>(new Map());
@@ -250,13 +288,30 @@ export default function Home() {
       const { toPng } = await import("html-to-image");
       await document.fonts.ready;
       const pixelRatio = 1080 / node.offsetWidth;
-      const dataUrl = await toPng(node, {
-        cacheBust: true,
-        pixelRatio,
-        canvasWidth: 1080,
-        canvasHeight: 1920,
-        backgroundColor: "#efeee8"
-      });
+      let dataUrl: string;
+      if (currentBackground.image) {
+        node.classList.add(styles.captureOverlay);
+        try {
+          const overlayUrl = await toPng(node, {
+            cacheBust: true,
+            pixelRatio,
+            canvasWidth: 1080,
+            canvasHeight: 1920,
+            backgroundColor: "transparent"
+          });
+          dataUrl = await composeStoryPng(currentBackground.image, overlayUrl, backgroundAdjust);
+        } finally {
+          node.classList.remove(styles.captureOverlay);
+        }
+      } else {
+        dataUrl = await toPng(node, {
+          cacheBust: true,
+          pixelRatio,
+          canvasWidth: 1080,
+          canvasHeight: 1920,
+          backgroundColor: "#efeee8"
+        });
+      }
       const filename = `sapporo-weather-${weather.day}-${Date.now()}.png`;
       const blob = await dataUrlToBlob(dataUrl);
       const file = new File([blob], filename, { type: "image/png" });

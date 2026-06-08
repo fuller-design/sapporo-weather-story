@@ -52,6 +52,14 @@
   pointer-events: none;
 }
 
+.captureOverlay {
+  background-image: none !important;
+}
+
+.captureOverlay .storyBackgroundImage {
+  opacity: 0 !important;
+}
+
 .storyShade {
   position: absolute;
   inset: 0;
