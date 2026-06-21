@@ -10,7 +10,7 @@ import {
   useRef,
   useState
 } from "react";
-import { Download, Droplet, ImagePlus, RefreshCw, Shuffle, Sparkles } from "lucide-react";
+import { Download, Droplet, ExternalLink, ImagePlus, Shuffle, Sparkles } from "lucide-react";
 import { WeatherIcon } from "@/app/components/WeatherIcon";
 import {
   fallbackComments,
@@ -33,7 +33,15 @@ type BackgroundAdjust = {
   zoom: number;
   x: number;
   y: number;
+  blur: number;
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  cool: number;
+  warm: number;
 };
+
+type OverlayTone = "black" | "white" | "blue";
 
 type TouchPoint = {
   x: number;
@@ -44,6 +52,13 @@ type BackgroundGesture = {
   startAdjust: BackgroundAdjust;
   startCenter: TouchPoint;
   startDistance: number;
+};
+
+type VideoBackground = {
+  url: string;
+  duration: number;
+  currentTime: number;
+  name: string;
 };
 
 const initialWeather: StoryWeather = {
@@ -72,14 +87,32 @@ const fallbackBackgrounds: Record<WeatherKind, string> = {
 const initialBackgroundAdjust: BackgroundAdjust = {
   zoom: 1,
   x: 0,
-  y: 0
+  y: 0,
+  blur: 0,
+  brightness: 100,
+  contrast: 100,
+  saturation: 100,
+  cool: 0,
+  warm: 0
+};
+
+const overlayRgb: Record<OverlayTone, string> = {
+  black: "0, 0, 0",
+  white: "255, 255, 255",
+  blue: "122, 151, 176"
 };
 
 const backgroundLimits = {
   minZoom: 1,
   maxZoom: 2.4,
   minOffset: -35,
-  maxOffset: 35
+  maxOffset: 35,
+  minBlur: 0,
+  maxBlur: 18,
+  minFilter: 0,
+  maxFilter: 200,
+  minTint: 0,
+  maxTint: 45
 };
 
 function pickRandomIndex(length: number, current = -1) {
@@ -101,7 +134,13 @@ function clampBackgroundAdjust(adjust: BackgroundAdjust): BackgroundAdjust {
   return {
     zoom: clamp(adjust.zoom, backgroundLimits.minZoom, backgroundLimits.maxZoom),
     x: clamp(adjust.x, backgroundLimits.minOffset, backgroundLimits.maxOffset),
-    y: clamp(adjust.y, backgroundLimits.minOffset, backgroundLimits.maxOffset)
+    y: clamp(adjust.y, backgroundLimits.minOffset, backgroundLimits.maxOffset),
+    blur: clamp(adjust.blur, backgroundLimits.minBlur, backgroundLimits.maxBlur),
+    brightness: clamp(adjust.brightness, 40, backgroundLimits.maxFilter),
+    contrast: clamp(adjust.contrast, 40, backgroundLimits.maxFilter),
+    saturation: clamp(adjust.saturation, 0, backgroundLimits.maxFilter),
+    cool: clamp(adjust.cool, backgroundLimits.minTint, backgroundLimits.maxTint),
+    warm: clamp(adjust.warm, backgroundLimits.minTint, backgroundLimits.maxTint)
   };
 }
 
@@ -139,6 +178,33 @@ function loadImage(src: string) {
   });
 }
 
+function seekVideo(video: HTMLVideoElement, time: number) {
+  return new Promise<void>((resolve, reject) => {
+    const safeTime = clamp(time, 0, Number.isFinite(video.duration) ? video.duration : 0);
+    const cleanup = () => {
+      video.removeEventListener("seeked", handleSeeked);
+      video.removeEventListener("error", handleError);
+    };
+    const handleSeeked = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("video seek failed"));
+    };
+
+    if (Math.abs(video.currentTime - safeTime) < 0.04 && video.readyState >= 2) {
+      resolve();
+      return;
+    }
+
+    video.addEventListener("seeked", handleSeeked);
+    video.addEventListener("error", handleError);
+    video.currentTime = safeTime;
+  });
+}
+
 async function composeStoryPng(backgroundSrc: string, overlaySrc: string, adjust: BackgroundAdjust) {
   const width = 1080;
   const height = 1920;
@@ -158,8 +224,29 @@ async function composeStoryPng(backgroundSrc: string, overlaySrc: string, adjust
   context.save();
   context.translate(width / 2 + (width * adjust.x) / 100, height / 2 + (height * adjust.y) / 100);
   context.scale(adjust.zoom, adjust.zoom);
-  context.drawImage(background, drawX - width / 2, drawY - height / 2, drawWidth, drawHeight);
+  context.filter = [
+    adjust.blur > 0 ? `blur(${adjust.blur}px)` : "",
+    `brightness(${adjust.brightness}%)`,
+    `contrast(${adjust.contrast}%)`,
+    `saturate(${adjust.saturation}%)`
+  ].filter(Boolean).join(" ");
+  const blurPad = adjust.blur * 4;
+  context.drawImage(
+    background,
+    drawX - width / 2 - blurPad,
+    drawY - height / 2 - blurPad,
+    drawWidth + blurPad * 2,
+    drawHeight + blurPad * 2
+  );
   context.restore();
+  if (adjust.cool > 0) {
+    context.fillStyle = `rgba(91, 144, 190, ${adjust.cool / 100})`;
+    context.fillRect(0, 0, width, height);
+  }
+  if (adjust.warm > 0) {
+    context.fillStyle = `rgba(245, 178, 111, ${adjust.warm / 100})`;
+    context.fillRect(0, 0, width, height);
+  }
 
   const overlay = await loadImage(overlaySrc);
   context.drawImage(overlay, 0, 0, width, height);
@@ -169,6 +256,7 @@ async function composeStoryPng(backgroundSrc: string, overlaySrc: string, adjust
 
 export default function Home() {
   const storyRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const activePointersRef = useRef<Map<number, TouchPoint>>(new Map());
   const backgroundGestureRef = useRef<BackgroundGesture | null>(null);
   const [weather, setWeather] = useState<StoryWeather>(initialWeather);
@@ -178,11 +266,15 @@ export default function Home() {
     detailedIcons: {}
   });
   const [customBackground, setCustomBackground] = useState<string | null>(null);
+  const [videoBackground, setVideoBackground] = useState<VideoBackground | null>(null);
   const [backgroundAdjust, setBackgroundAdjust] = useState<BackgroundAdjust>(initialBackgroundAdjust);
-  const [isFetchingWeather, setIsFetchingWeather] = useState(false);
+  const [overlayTone, setOverlayTone] = useState<OverlayTone>("black");
+  const [overlayOpacity, setOverlayOpacity] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCapturingVideo, setIsCapturingVideo] = useState(false);
   const [notice, setNotice] = useState("");
   const [dateMain, dateWeekday] = weather.dateLabel.split(" ");
+  const videoUrl = videoBackground?.url;
 
   useEffect(() => {
     fetch("/api/assets")
@@ -190,6 +282,12 @@ export default function Home() {
       .then((data: AssetMap) => setAssets(data))
       .catch(() => setNotice("素材一覧を読み込めませんでした。フォールバック表示で続行します。"));
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (videoUrl) URL.revokeObjectURL(videoUrl);
+    };
+  }, [videoUrl]);
 
   const currentBackground = useMemo(() => {
     const fallback = fallbackBackgrounds[weather.primary];
@@ -209,9 +307,25 @@ export default function Home() {
       ({
         "--bg-zoom": backgroundAdjust.zoom,
         "--bg-x": `${backgroundAdjust.x}%`,
-        "--bg-y": `${backgroundAdjust.y}%`
+        "--bg-y": `${backgroundAdjust.y}%`,
+        "--bg-blur": `${backgroundAdjust.blur}px`,
+        "--bg-brightness": `${backgroundAdjust.brightness}%`,
+        "--bg-contrast": `${backgroundAdjust.contrast}%`,
+        "--bg-saturation": `${backgroundAdjust.saturation}%`,
+        "--photo-cool": backgroundAdjust.cool / 100,
+        "--photo-warm": backgroundAdjust.warm / 100
       }) as CSSProperties,
     [backgroundAdjust]
+  );
+
+  const storyStyle = useMemo(
+    () =>
+      ({
+        backgroundImage: currentBackground.fallback,
+        "--overlay-rgb": overlayRgb[overlayTone],
+        "--overlay-opacity": overlayOpacity
+      }) as CSSProperties,
+    [currentBackground.fallback, overlayOpacity, overlayTone]
   );
 
   const updateWeatherText = (weatherText: string) => {
@@ -226,6 +340,7 @@ export default function Home() {
       backgroundIndex: pickRandomIndex(assets.backgrounds[option.primary]?.length ?? 0)
     }));
     setCustomBackground(null);
+    clearVideoBackground();
     setBackgroundAdjust(initialBackgroundAdjust);
   };
 
@@ -234,31 +349,9 @@ export default function Home() {
     setWeather((current) => ({ ...current, day, dateLabel: formatDateLabel(base) }));
   };
 
-  const fetchWeather = async () => {
-    setIsFetchingWeather(true);
-    setNotice("");
-    try {
-      const response = await fetch(`/api/weather?day=${weather.day}`);
-      if (!response.ok) throw new Error("weather fetch failed");
-      const data = await response.json();
-      const option = getWeatherOption(data.weatherText);
-      setWeather((current) => ({
-        ...current,
-        ...data,
-        iconKey: option.iconKey,
-        backgroundIndex: pickRandomIndex(assets.backgrounds[data.primary as WeatherKind]?.length ?? 0)
-      }));
-      setCustomBackground(null);
-      setBackgroundAdjust(initialBackgroundAdjust);
-    } catch {
-      setNotice("天気情報を取得できませんでした。入力欄から手動で調整できます。");
-    } finally {
-      setIsFetchingWeather(false);
-    }
-  };
-
   const shuffleBackground = () => {
     setCustomBackground(null);
+    clearVideoBackground();
     setBackgroundAdjust(initialBackgroundAdjust);
     setWeather((current) => ({
       ...current,
@@ -338,8 +431,51 @@ export default function Home() {
     }
   };
 
+  const clearVideoBackground = () => {
+    setVideoBackground((current) => {
+      if (current) URL.revokeObjectURL(current.url);
+      return null;
+    });
+  };
+
+  const captureVideoFrame = useCallback(async (time = videoBackground?.currentTime ?? 0) => {
+    const video = videoRef.current;
+    if (!video) return;
+    setIsCapturingVideo(true);
+    setNotice("");
+    try {
+      await seekVideo(video, time);
+      if (!video.videoWidth || !video.videoHeight) throw new Error("video size unavailable");
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("canvas unavailable");
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      setCustomBackground(canvas.toDataURL("image/png"));
+      setBackgroundAdjust(initialBackgroundAdjust);
+      setNotice("動画のシーンを背景に設定しました。");
+    } catch {
+      setNotice("動画から画像を取り出せませんでした。別の動画か時間でお試しください。");
+    } finally {
+      setIsCapturingVideo(false);
+    }
+  }, [videoBackground?.currentTime]);
+
   const handleUpload = (file?: File) => {
     if (!file) return;
+    if (file.type.startsWith("video/")) {
+      const url = URL.createObjectURL(file);
+      setVideoBackground((current) => {
+        if (current) URL.revokeObjectURL(current.url);
+        return { url, duration: 0, currentTime: 0, name: file.name };
+      });
+      setCustomBackground(null);
+      setBackgroundAdjust(initialBackgroundAdjust);
+      setNotice("動画を読み込みました。使いたいシーンを選んでください。");
+      return;
+    }
+    clearVideoBackground();
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
@@ -434,7 +570,7 @@ export default function Home() {
           <div
             ref={storyRef}
             className={styles.story}
-            style={{ backgroundImage: currentBackground.fallback }}
+            style={storyStyle}
             onPointerDown={handleBackgroundPointerDown}
             onPointerMove={handleBackgroundPointerMove}
             onPointerUp={handleBackgroundPointerEnd}
@@ -448,6 +584,7 @@ export default function Home() {
             {currentBackground.image ? (
               <img className={styles.storyBackgroundImage} src={currentBackground.image} alt="" style={backgroundImageStyle} />
             ) : null}
+            <div className={styles.storyPhotoTone} style={backgroundImageStyle} />
             <div className={styles.storyShade} />
             <div className={styles.storyContent}>
               <header className={styles.storyHeader}>
@@ -506,9 +643,15 @@ export default function Home() {
             <p className={styles.kicker}>SAPPORO STORY</p>
             <h2>天気画像生成</h2>
           </div>
-          <button className={styles.iconButton} type="button" onClick={fetchWeather} disabled={isFetchingWeather} title="天気取得">
-            <RefreshCw size={20} />
-          </button>
+          <a
+            className={styles.iconButton}
+            href="https://weathernews.jp/onebox/tenki/hokkaido/01100/"
+            target="_blank"
+            rel="noreferrer"
+            title="ウェザーニュースを確認"
+          >
+            <ExternalLink size={20} />
+          </a>
         </div>
 
         <div className={styles.segmented} role="group" aria-label="今日／明日切替">
@@ -572,9 +715,65 @@ export default function Home() {
 
         <label className={styles.upload}>
           <ImagePlus size={18} />
-          背景画像を一時アップロード
-          <input type="file" accept="image/*" onChange={(event) => handleUpload(event.target.files?.[0])} />
+          背景画像・動画を選択
+          <input
+            type="file"
+            accept="image/*,video/*"
+            onChange={(event) => {
+              handleUpload(event.target.files?.[0]);
+              event.currentTarget.value = "";
+            }}
+          />
         </label>
+
+        {videoBackground ? (
+          <div className={styles.videoTools} aria-label="動画から背景シーンを選択">
+            <video
+              ref={videoRef}
+              className={styles.videoPreview}
+              src={videoBackground.url}
+              muted
+              playsInline
+              preload="metadata"
+              onLoadedMetadata={(event) => {
+                const duration = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0;
+                setVideoBackground((current) => current ? { ...current, duration, currentTime: 0 } : current);
+              }}
+              onLoadedData={() => void captureVideoFrame(0)}
+              onTimeUpdate={(event) => {
+                const currentTime = event.currentTarget.currentTime;
+                setVideoBackground((current) => current ? { ...current, currentTime } : current);
+              }}
+            />
+            <div className={styles.toolHeader}>
+              <span>動画シーン選択</span>
+              <span>{videoBackground.name}</span>
+            </div>
+            <label className={styles.rangeField}>
+              <span>時間</span>
+              <input
+                type="range"
+                min="0"
+                max={Math.max(videoBackground.duration, 0.1)}
+                step="0.1"
+                value={videoBackground.currentTime}
+                onChange={(event) => {
+                  const time = Number(event.target.value);
+                  setVideoBackground((current) => current ? { ...current, currentTime: time } : current);
+                  if (videoRef.current) videoRef.current.currentTime = time;
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className={styles.captureButton}
+              onClick={() => captureVideoFrame(videoBackground.currentTime)}
+              disabled={isCapturingVideo}
+            >
+              {isCapturingVideo ? "取り込み中..." : "このシーンを背景に設定"}
+            </button>
+          </div>
+        ) : null}
 
         <div className={styles.backgroundTools} aria-label="背景画像の切り取り調整">
           <div className={styles.toolHeader}>
@@ -616,13 +815,98 @@ export default function Home() {
               onChange={(event) => setBackgroundAdjust((current) => clampBackgroundAdjust({ ...current, y: Number(event.target.value) }))}
             />
           </label>
+          <label className={styles.rangeField}>
+            <span>ぼかし</span>
+            <input
+              type="range"
+              min="0"
+              max="18"
+              step="1"
+              value={backgroundAdjust.blur}
+              onChange={(event) => setBackgroundAdjust((current) => clampBackgroundAdjust({ ...current, blur: Number(event.target.value) }))}
+            />
+          </label>
+          <label className={styles.rangeField}>
+            <span>明るさ</span>
+            <input
+              type="range"
+              min="40"
+              max="200"
+              step="1"
+              value={backgroundAdjust.brightness}
+              onChange={(event) => setBackgroundAdjust((current) => clampBackgroundAdjust({ ...current, brightness: Number(event.target.value) }))}
+            />
+          </label>
+          <label className={styles.rangeField}>
+            <span>コントラスト</span>
+            <input
+              type="range"
+              min="40"
+              max="200"
+              step="1"
+              value={backgroundAdjust.contrast}
+              onChange={(event) => setBackgroundAdjust((current) => clampBackgroundAdjust({ ...current, contrast: Number(event.target.value) }))}
+            />
+          </label>
+          <label className={styles.rangeField}>
+            <span>彩度</span>
+            <input
+              type="range"
+              min="0"
+              max="200"
+              step="1"
+              value={backgroundAdjust.saturation}
+              onChange={(event) => setBackgroundAdjust((current) => clampBackgroundAdjust({ ...current, saturation: Number(event.target.value) }))}
+            />
+          </label>
+          <label className={styles.rangeField}>
+            <span>青み</span>
+            <input
+              type="range"
+              min="0"
+              max="45"
+              step="1"
+              value={backgroundAdjust.cool}
+              onChange={(event) => setBackgroundAdjust((current) => clampBackgroundAdjust({ ...current, cool: Number(event.target.value) }))}
+            />
+          </label>
+          <label className={styles.rangeField}>
+            <span>暖色</span>
+            <input
+              type="range"
+              min="0"
+              max="45"
+              step="1"
+              value={backgroundAdjust.warm}
+              onChange={(event) => setBackgroundAdjust((current) => clampBackgroundAdjust({ ...current, warm: Number(event.target.value) }))}
+            />
+          </label>
+          <label className={styles.rangeField}>
+            <span>色</span>
+            <select value={overlayTone} onChange={(event) => setOverlayTone(event.target.value as OverlayTone)}>
+              <option value="black">黒</option>
+              <option value="white">白</option>
+              <option value="blue">青</option>
+            </select>
+          </label>
+          <label className={styles.rangeField}>
+            <span>濃さ</span>
+            <input
+              type="range"
+              min="0"
+              max="0.45"
+              step="0.01"
+              value={overlayOpacity}
+              onChange={(event) => setOverlayOpacity(Number(event.target.value))}
+            />
+          </label>
         </div>
 
         <div className={styles.actions}>
-          <button type="button" onClick={fetchWeather} disabled={isFetchingWeather}>
-            <RefreshCw size={18} />
-            天気取得
-          </button>
+          <a href="https://weathernews.jp/onebox/tenki/hokkaido/01100/" target="_blank" rel="noreferrer">
+            <ExternalLink size={18} />
+            ウェザーニュースを確認
+          </a>
           <button type="button" onClick={shuffleBackground}>
             <Shuffle size={18} />
             背景変更
